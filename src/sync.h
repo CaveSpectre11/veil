@@ -7,10 +7,14 @@
 #define BITCOIN_SYNC_H
 
 #include <threadsafety.h>
+#include <logging.h>
 
 #include <condition_variable>
 #include <thread>
 #include <mutex>
+#include <chrono>
+#include <map>
+#include <iterator>
 
 #define DEBUG_LOCKORDER 1
 #define DEBUG_LOCKCONTENTION 1
@@ -114,6 +118,8 @@ typedef AnnotatedMixin<std::mutex> Mutex;
 
 #ifdef DEBUG_LOCKCONTENTION
 void PrintLockContention(const char* pszName, const char* pszFile, int nLine);
+extern std::map<std::string, std::string> lockMap;
+extern std::mutex lockMapMutex;
 #endif
 
 /** Wrapper around std::unique_lock style lock for Mutex. */
@@ -121,16 +127,49 @@ template <typename Mutex, typename Base = typename Mutex::UniqueLock>
 class SCOPED_LOCKABLE UniqueLock : public Base
 {
 private:
+
     void Enter(const char* pszName, const char* pszFile, int nLine)
     {
         EnterCritical(pszName, pszFile, nLine, (void*)(Base::mutex()));
 #ifdef DEBUG_LOCKCONTENTION
+        std::map<std::string, std::string>::iterator lockMapIt;
         if (!Base::try_lock()) {
+            lockMapMutex.lock();
+            lockMapIt = lockMap.find(pszName);
+            if (lockMapIt == lockMap.end())
+                LogPrintf("Waiting for Lock: %s [%s:%d] - held by [n/a]\n", pszName, pszFile, nLine);
+            else
+                LogPrintf("Waiting for Lock: %s [%s:%d] - held [%s]\n", pszName, pszFile, nLine, lockMapIt->second);
+            lockMapMutex.unlock();
+            using namespace std::chrono;
+            high_resolution_clock::time_point t1;
+            high_resolution_clock::time_point t2;
             PrintLockContention(pszName, pszFile, nLine);
+            t1 = high_resolution_clock::now();
 #endif
             Base::lock();
 #ifdef DEBUG_LOCKCONTENTION
+            t2 = high_resolution_clock::now();
+            duration<double> time_span = duration_cast<duration<double>>(t2 - t1);
+            lockMapMutex.lock();
+            lockMapIt = lockMap.find(pszName);
+            if (lockMapIt == lockMap.end())
+                LogPrintf("Taking Lock: %s (%f sec) [%s:%d] from [N/A]\n", pszName, time_span.count(),pszFile, nLine);
+            else
+                LogPrintf("Taking Lock: %s (%f sec) [%s:%d] from [%s]\n", pszName, time_span.count(),pszFile, nLine, lockMapIt->second);
+            lockMapMutex.unlock();
         }
+        std::stringstream lockRef;
+        std::stringstream lockName;
+        lockRef << pszFile << ":" << std::to_string(nLine);
+        lockName << pszName;
+        lockMapMutex.lock();
+        lockMapIt = lockMap.find(lockName.str());
+        if (lockMapIt != lockMap.end())
+            lockMapIt->second = lockRef.str();
+        else
+            lockMap.insert(std::make_pair(lockName.str(), lockRef.str()));
+        lockMapMutex.unlock();
 #endif
     }
 

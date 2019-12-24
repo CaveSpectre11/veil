@@ -24,8 +24,7 @@ static_assert(false, "thread_local is not supported");
 #endif
 void PrintLockContention(const char* pszName, const char* pszFile, int nLine)
 {
-    LogPrintf("LOCKCONTENTION: %s\n", pszName);
-    LogPrintf("Locker: %s:%d\n", pszFile, nLine);
+    LogPrintf("LOCKCONTENTION: %s [%s:%d]\n", pszName, pszFile, nLine);
 }
 #endif /* DEBUG_LOCKCONTENTION */
 
@@ -92,6 +91,11 @@ LockData& GetLockData() {
 }
 
 static thread_local LockStack g_lockstack;
+#ifdef DEBUG_LOCKCONTENTION
+  std::map<std::string, std::string> lockMap;
+  std::mutex lockMapMutex;
+#endif
+
 
 static void potential_deadlock_detected(const std::pair<void*, void*>& mismatch, const LockStack& s1, const LockStack& s2)
 {
