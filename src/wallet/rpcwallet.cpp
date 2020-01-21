@@ -644,6 +644,8 @@ static UniValue sendtoaddress(const JSONRPCRequest& request)
 
     CTransactionRef tx = SendMoney(pwallet, dest, nAmount, fSubtractFeeFromAmount, coin_control, std::move(mapValue), {} /* fromAccount */);
 
+    // This isn't going to work since it's already sent it above.  Need to put the dandelion code into SendMoney.
+    // Also need some error processing for SendMoney
     if (fDandelion){
         LOCK(veil::dandelion.cs);
         veil::dandelion.Add(tx->GetHash(), GetAdjustedTime() + veil::dandelion.nDefaultStemTime, veil::dandelion.nDefaultNodeID);

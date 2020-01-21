@@ -32,6 +32,7 @@ public:
     const int64_t nDefaultStemTime = 120; //120 seconds
     //! Indicates the tx came from the current node
     const int64_t nDefaultNodeID = -1;
+    bool AddNew(const uint256& hashInventory);
     void Add(const uint256& hashInventory, const int64_t& nTimeStemEnd, const int64_t& nNodeIDFrom);
     bool IsFromNode(const uint256& hash, const int64_t nNodeID) const;
     bool IsNodePendingSend(const uint256& hashInventory, const int64_t nNodeID);

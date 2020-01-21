@@ -1,5 +1,6 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-2019 The Bitcoin Core developers
+// Copyright (c) 2018-2019 The Veil developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -1200,8 +1201,9 @@ static UniValue sendrawtransaction(const JSONRPCRequest& request)
 
     CInv inv(MSG_TX, hashTx);
     if (fDandelion) {
-        LOCK(veil::dandelion.cs);
-        veil::dandelion.Add(hashTx, GetAdjustedTime() + veil::dandelion.nDefaultStemTime, veil::dandelion.nDefaultNodeID);
+        if (!veil::dandelion.AddNew(hashTx)) {
+            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Error: Dandelion transaction failed");
+        }
     }
     else {
         g_connman->ForEachNode([&inv](CNode *pnode) {

@@ -1,5 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2019 The Bitcoin Core developers
+// Copyright (c) 2018-2019 The Veil developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -2025,27 +2026,51 @@ void CConnman::OpenNetworkConnection(const CAddress& addrConnect, bool fCountFai
     }
 }
 
+//
+// Return -1 if Dandelion isn't enabled, otherwise returns a count of how many
+// dandelion node peers we have.  We don't want to send Dandelion connections
+// if there aren't any nodes to send it to.  We can accept them from others even
+// if we can't send them on since we will just broadcast it as the endpoint.
+//
+int32_t CConnman::GetDandelionNodeCount()
+{
+    if (!fEnableDandelion) return -1;
+    std::vector<CNode *> vDandelionNodes;
+
+    {
+        LOCK(cs_vNodes);
+        LogPrintf("(debug) vNodes count = %d\n", vNodes.size());
+        for (CNode *pnode : vNodes) {
+            if (pnode->nServices & NODE_DANDELION_OPT_OUT)
+                continue;
+            vDandelionNodes.push_back(pnode);
+        }
+    }
+    LogPrintf("(debug) DandelionNodes count = %d\n", vNodes.size());
+    return vDandelionNodes.size();
+}
+
 void CConnman::ThreadMessageHandler()
 {
     while (!flagInterruptMsgProc)
     {
         std::vector<CNode*> vNodesCopy;
+        std::vector<CNode*> vDandelionNodes;
+
         {
             LOCK(cs_vNodes);
             vNodesCopy = vNodes;
             for (CNode* pnode : vNodesCopy) {
                 pnode->AddRef();
+                if (fEnableDandelion && !(pnode->nServices & NODE_DANDELION_OPT_OUT))
+                    vDandelionNodes.push_back(pnode);
             }
         }
-        if (fEnableDandelion) {
-            std::vector<CNode*> vDandelionNodes;
-            for (CNode* pnode : vNodesCopy) {
-                if (pnode->nServices & NODE_DANDELION_OPT_OUT)
-                    continue;
-                vDandelionNodes.push_back(pnode);
-            }
-            LOCK(veil::dandelion.cs);
-            veil::dandelion.Process(vDandelionNodes);
+
+        // will be zero if !fEnableDandelion, so no need to check
+        if (vDandelionNodes.size() > 0) {
+           LOCK(veil::dandelion.cs);
+           veil::dandelion.Process(vDandelionNodes);
         }
 
         bool fMoreWork = false;
