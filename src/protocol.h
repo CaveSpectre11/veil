@@ -1,5 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2019 The Bitcoin Core developers
+// Copyright (c) 2018-2019 The Veil developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -274,6 +275,8 @@ enum ServiceFlags : uint64_t {
     NODE_NETWORK_LIMITED = (1 << 10),
     // NODE_DANDELION_OPT_OUT means the node should not be expected to obey the Dandelion protocol.
     NODE_DANDELION_OPT_OUT = (1 << 11),
+    // NODE_DANDELION_V1 means the node should will accept Dandelion Version 1 stem transactions.
+    NODE_DANDELION_V1 = (1 << 12),
 
     // Bits 24-31 are reserved for temporary experiments. Just pick a bit that
     // isn't getting used, or one not being used much, and notify the

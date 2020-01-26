@@ -37,6 +37,7 @@
 
 #include <future>
 #include <stdint.h>
+#include <iostream>
 
 #include <univalue.h>
 
@@ -1108,8 +1109,6 @@ UniValue signrawtransaction(const JSONRPCRequest& request)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "No private keys available.");
     }
 }
-#include <iostream>
-#include <veil/dandelioninventory.h>
 
 static UniValue sendrawtransaction(const JSONRPCRequest& request)
 {

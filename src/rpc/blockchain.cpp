@@ -34,6 +34,7 @@
 #include <validationinterface.h>
 #include <warnings.h>
 #include <veil/ringct/anon.h>
+#include <veil/dandelioninventory.h>
 
 #include <assert.h>
 #include <stdint.h>
@@ -452,6 +453,13 @@ static std::string EntryDescriptionString()
            "        \"ancestor\" : n,     (numeric) modified fees (see above) of in-mempool ancestors (including this one) in " + CURRENCY_UNIT + "\n"
            "        \"descendant\" : n,   (numeric) modified fees (see above) of in-mempool descendants (including this one) in " + CURRENCY_UNIT + "\n"
            "    }\n"
+           "    \"dandelion\" : {         (optional) Included if the transaction was Dandelion protocol\n"
+           "        \"stemstate\" :       (string) \"stem\" state or \"bloom\" state\n"
+           "        \"stemexpire\" :      (numeric) epoch time when stem will expire (or expired)\n"
+           "        \"timetobloom\" :     (numeric) Time (in seconds) to bloom, or -1 if already in bloom state\n"
+           "        \"nodefrom\" :        (numeric) peer node transaction received from\n"
+           "        \"nodeto\" :          (numeric) peer node transaction sent to\n"
+           "    }\n"
            "    \"depends\" : [           (array) unconfirmed transactions used as inputs for this transaction\n"
            "        \"transactionid\",    (string) parent transaction id\n"
            "       ... ]\n"
@@ -471,6 +479,21 @@ static void entryToJSON(UniValue &info, const CTxMemPoolEntry &e) EXCLUSIVE_LOCK
     fees.pushKV("descendant", ValueFromAmount(e.GetModFeesWithDescendants()));
     info.pushKV("fees", fees);
 
+    const CTransaction& tx = e.GetTx();
+
+    veil::Stem DandelionRecord;
+    if (veil::dandelion.GetStemFromInventory(tx.GetHash(), DandelionRecord)) {
+        UniValue dlion(UniValue::VOBJ);
+        int64_t ttb=DandelionRecord.nTimeStemEnd - GetAdjustedTime();
+        if (ttb < 0) ttb = -1;
+        dlion.pushKV("stemstate", (ttb > 0 ? "stem" : "bloom"));
+        dlion.pushKV("stemexpire", DandelionRecord.nTimeStemEnd);
+        dlion.pushKV("timetobloom", ttb);
+        dlion.pushKV("nodefrom", DandelionRecord.nNodeIDFrom);
+        dlion.pushKV("nodeto", DandelionRecord.nNodeIDSentTo);
+        info.pushKV("dandelion", dlion);
+    }
+
     info.pushKV("size", (int)e.GetTxSize());
     info.pushKV("fee", ValueFromAmount(e.GetFee()));
     info.pushKV("modifiedfee", ValueFromAmount(e.GetModifiedFee()));
@@ -483,7 +506,6 @@ static void entryToJSON(UniValue &info, const CTxMemPoolEntry &e) EXCLUSIVE_LOCK
     info.pushKV("ancestorsize", e.GetSizeWithAncestors());
     info.pushKV("ancestorfees", e.GetModFeesWithAncestors());
     info.pushKV("wtxid", mempool.vTxHashes[e.vTxHashesIdx].first.ToString());
-    const CTransaction& tx = e.GetTx();
     std::set<std::string> setDepends;
     for (const CTxIn& txin : tx.vin)
     {

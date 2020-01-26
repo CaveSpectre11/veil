@@ -2027,49 +2027,57 @@ void CConnman::OpenNetworkConnection(const CAddress& addrConnect, bool fCountFai
 }
 
 //
-// Return -1 if Dandelion isn't enabled, otherwise returns a count of how many
-// dandelion node peers we have.  We don't want to send Dandelion connections
-// if there aren't any nodes to send it to.  We can accept them from others even
-// if we can't send them on since we will just broadcast it as the endpoint.
+// GetDandelionNodeCount will return the number of dandelion supporting nodes on
+// your peers list.  We will still count them even if we aren't supporting the
+// dandelion network so we can send with dandelion.  However it should be discouraged
+// as sending with dandelion and not supporting dandelion will reveal that you
+// are the original source, and not a relay.
+//
+// If we are receiving a dandelion connection it does not necessarily matter
+// that we don't have any nodes to send them to.  We can broadcast it when it
+// reaches the bloom phase; but in future growth we may want to design a
+// mechanism to discourage an up-stem peer from using us.
 //
 int32_t CConnman::GetDandelionNodeCount()
 {
-    if (!fEnableDandelion) return -1;
-    std::vector<CNode *> vDandelionNodes;
 
-    {
-        LOCK(cs_vNodes);
-        LogPrintf("(debug) vNodes count = %d\n", vNodes.size());
-        for (CNode *pnode : vNodes) {
-            if (pnode->nServices & NODE_DANDELION_OPT_OUT)
-                continue;
+    std::vector<CNode*> vTemp;
+    return GetDandelionNodes(vTemp);
+}
+
+int32_t CConnman::GetDandelionNodes(std::vector<CNode *> &vDandelionNodes)
+{
+
+    vDandelionNodes.clear();
+
+    LOCK(cs_vNodes);
+    for (CNode *pnode : vNodes) {
+        if (pnode->nServices & NODE_DANDELION_V1)
             vDandelionNodes.push_back(pnode);
-        }
     }
-    LogPrintf("(debug) DandelionNodes count = %d\n", vNodes.size());
+
     return vDandelionNodes.size();
 }
 
 void CConnman::ThreadMessageHandler()
 {
+    std::vector<CNode*> vNodesCopy;
+    std::vector<CNode*> vDandelionNodes;
+
     while (!flagInterruptMsgProc)
     {
-        std::vector<CNode*> vNodesCopy;
-        std::vector<CNode*> vDandelionNodes;
-
         {
             LOCK(cs_vNodes);
             vNodesCopy = vNodes;
             for (CNode* pnode : vNodesCopy) {
                 pnode->AddRef();
-                if (fEnableDandelion && !(pnode->nServices & NODE_DANDELION_OPT_OUT))
-                    vDandelionNodes.push_back(pnode);
             }
         }
 
-        // will be zero if !fEnableDandelion, so no need to check
+        GetDandelionNodes(vDandelionNodes);
+
+        // Even if dandelion disabled, process our dandelion sends
         if (vDandelionNodes.size() > 0) {
-           LOCK(veil::dandelion.cs);
            veil::dandelion.Process(vDandelionNodes);
         }
 
@@ -2080,8 +2088,8 @@ void CConnman::ThreadMessageHandler()
             if (pnode->fDisconnect)
                 continue;
 
+            pnode->AddRef();
             // Receive messages
-            //LOCK(veil::dandelion.cs);
             bool fMoreNodeWork = m_msgproc->ProcessMessages(pnode, flagInterruptMsgProc);
             fMoreWork |= (fMoreNodeWork && !pnode->fPauseSend);
             if (flagInterruptMsgProc)

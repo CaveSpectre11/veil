@@ -11,80 +11,97 @@ DandelionInventory dandelion;
 
 // Return false if we didn't add the dandelion transaction; Don't add it if there aren't
 // any dandelion peers.
-bool DandelionInventory::AddNew(const uint256& hashInventory)
+bool DandelionInventory::AddNew(const uint256& hash)
 {
-    if (!fEnableDandelion) return false;
-
     if (!g_connman || g_connman->GetDandelionNodeCount() < 1) {
-        LogPrintf("%s: No Dandelion peers found\n", __func__);
         return false;
     }
 
     // TODO - randomize StemTime
-    Add(hashInventory, GetAdjustedTime() + nDefaultStemTime, nDefaultNodeID);
+    Add(hash, GetAdjustedTime() + nDefaultStemTime, nDefaultNodeID);
     return true;
 }
 
-void DandelionInventory::Add(const uint256& hashInventory, const int64_t& nTimeStemEnd, const int64_t& nNodeIDFrom)
+void DandelionInventory::Add(const uint256& hash, const int64_t& nTimeStemEnd, const int64_t& nNodeIDFrom)
 {
     Stem stem;
     stem.nTimeStemEnd = nTimeStemEnd;
     stem.nNodeIDFrom = nNodeIDFrom;
 
+    LogPrintf("(debug) %s: Adding Dandelion TX from %d; end %d: %s\n",
+              __func__, nNodeIDFrom, nTimeStemEnd, hash.GetHex());
     LOCK(veil::dandelion.cs);
-    mapStemInventory.emplace(std::make_pair(hashInventory, stem));
+    mapStemInventory.emplace(std::make_pair(hash, stem));
 }
 
-int64_t DandelionInventory::GetTimeStemPhaseEnd(const uint256& hashObject) const
+// Check if the hash was a Dandelion transaction
+bool DandelionInventory::CheckInventory(const uint256& hash) const
+{
+    Stem stem;
+    return GetStemFromInventory(hash, stem);
+}
+
+// Load the dandelion record if it's in the inventory; return false if it's not
+bool DandelionInventory::GetStemFromInventory(const uint256& hash, Stem& stem) const
 {
     LOCK(veil::dandelion.cs);
-    if (!mapStemInventory.count(hashObject))
+    auto it = mapStemInventory.find(hash);
+    if (it == mapStemInventory.end()) {
+        return false;
+    }
+    stem = it->second;
+    return true;
+}
+
+int64_t DandelionInventory::GetTimeStemPhaseEnd(const uint256& hash) const
+{
+    Stem stem;
+    if (!GetStemFromInventory(hash, stem))
         return 0;
 
-    return mapStemInventory.at(hashObject).nTimeStemEnd;
+    return stem.nTimeStemEnd;
 }
 
 bool DandelionInventory::IsFromNode(const uint256& hash, const int64_t nNodeID) const
 {
-    LOCK(veil::dandelion.cs);
-    if (!mapStemInventory.count(hash))
+    Stem stem;
+    if (!GetStemFromInventory(hash, stem))
         return false;
 
-    return mapStemInventory.at(hash).nNodeIDFrom == nNodeID;
+    return stem.nNodeIDFrom == nNodeID;
 }
 
 bool DandelionInventory::IsInStemPhase(const uint256& hash) const
 {
-    LOCK(veil::dandelion.cs);
-    if (!mapStemInventory.count(hash))
+    Stem stem;
+    if (!GetStemFromInventory(hash, stem))
         return false;
 
-    return mapStemInventory.at(hash).nTimeStemEnd < GetAdjustedTime();
+    return stem.nTimeStemEnd > GetAdjustedTime();
 }
 
 //Only send to a node that requests the tx if the inventory was broadcast to this node
-bool DandelionInventory::IsNodePendingSend(const uint256& hashInventory, const int64_t nNodeID)
+bool DandelionInventory::IsNodePendingSend(const uint256& hash, const int64_t nNodeID)
 {
-    LOCK(veil::dandelion.cs);
-    if (!mapStemInventory.count(hashInventory))
-        return true;
+    Stem stem;
+    if (!GetStemFromInventory(hash, stem))
+        return false;
 
-    return mapStemInventory.at(hashInventory).nNodeIDSentTo == nNodeID;
+    return stem.nNodeIDSentTo == nNodeID;
 }
 
 bool DandelionInventory::IsSent(const uint256& hash) const
 {
-    LOCK(veil::dandelion.cs);
+    Stem stem;
     //Assume that if it is not here, then it is sent
-    if (!mapStemInventory.count(hash))
+    if (!GetStemFromInventory(hash, stem))
         return true;
 
-    return mapStemInventory.at(hash).nNodeIDSentTo != 0;
+    return stem.nNodeIDSentTo != 0;
 }
 
 void DandelionInventory::SetInventorySent(const uint256& hash, const int64_t nNodeID)
 {
-    LOCK(veil::dandelion.cs);
     if (!mapStemInventory.count(hash))
         return;
     mapStemInventory.at(hash).nNodeIDSentTo = nNodeID;
@@ -92,18 +109,20 @@ void DandelionInventory::SetInventorySent(const uint256& hash, const int64_t nNo
     mapNodeToSentTo.erase(hash);
 }
 
-bool DandelionInventory::IsQueuedToSend(const uint256& hashObject) const
+bool DandelionInventory::IsQueuedToSend(const uint256& hash) const
 {
     LOCK(veil::dandelion.cs);
     //If no knowledge of this hash, then assume safe to send
-    if (!mapStemInventory.count(hashObject))
+    if (!mapStemInventory.count(hash))
         return true;
 
-    return static_cast<bool>(setPendingSend.count(hashObject));
+    return static_cast<bool>(setPendingSend.count(hash));
 }
 
 void DandelionInventory::MarkSent(const uint256& hash)
 {
+    LogPrintf("(debug) %s: Erasing sent dandelion tx\n", __func__);
+    // Todo - retain it so we can handle if we don't see it bloomed
     LOCK(veil::dandelion.cs);
     mapStemInventory.erase(hash);
     setPendingSend.erase(hash);
@@ -126,10 +145,11 @@ void DandelionInventory::Process(const std::vector<CNode*>& vNodes)
         auto hash = mi.first;
         auto stem = mi.second;
 
-        //If in the fluff phase, remove from this tracker
+        // Todo; if expired, we need to bloom it
         if (stem.nTimeStemEnd < GetAdjustedTime()) {
             mapStemInventory.erase(mi.first);
             setPendingSend.erase(mi.first);
+            LogPrintf("(debug) %s: Erasing expired dandelion tx\n", __func__);
             continue;
         }
 
@@ -137,31 +157,26 @@ void DandelionInventory::Process(const std::vector<CNode*>& vNodes)
         if (setPendingSend.count(mi.first))
             continue;
 
-        //If rolled recently, then wait
-        if (GetAdjustedTime() - stem.nTimeLastRoll < 5)
-            continue;
-        mapStemInventory.at(hash).nTimeLastRoll = GetAdjustedTime();
-
         //Set the index to send to
         int64_t nNodeID;
+        CNode* pNode;
         do {
             int nRand = GetRandInt(static_cast<int>(vNodes.size() - 1));
-            nNodeID = vNodes[nRand]->GetId();
-        }
-        while (nNodeID == stem.nNodeIDFrom);
+            pNode = vNodes[nRand];
+            nNodeID = pNode->GetId();
+            LogPrintf("(debug) %s: Selecting nNodeID %d (rand %d)\n", __func__, nNodeID, nRand);
+        } while (nNodeID == stem.nNodeIDFrom);
+
         mapNodeToSentTo.insert(std::make_pair<uint256&, int64_t& >(hash, nNodeID));
 
-        // Randomly decide to send this if it is in stem phase
-        auto n = GetRandInt(3);
-        if (n == 1)
-            setPendingSend.emplace(hash);
+        setPendingSend.emplace(hash);
+        pNode->fSendMempool = true;	// Juice it to get the mempool.
     }
 }
 
-    bool DandelionInventory::IsCorrectNodeToSend(const uint256& hash, const int64_t nNodeID)
-    {
-        return mapNodeToSentTo[hash] == nNodeID;
-    }
-
+bool DandelionInventory::IsCorrectNodeToSend(const uint256& hash, const int64_t nNodeID)
+{
+    return mapNodeToSentTo[hash] == nNodeID;
 }
 
+} // end namespace

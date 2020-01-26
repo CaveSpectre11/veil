@@ -321,6 +321,7 @@ public:
     int64_t PoissonNextSendInbound(int64_t now, int average_interval_seconds);
 
     int32_t GetDandelionNodeCount();
+    int32_t GetDandelionNodes(std::vector<CNode *> &vDandelionNodes);
 private:
     struct ListenSocket {
         SOCKET socket;

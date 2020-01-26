@@ -1,5 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2019 The Bitcoin Core developers
+// Copyright (c) 2018-2019 The Veil developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -1316,39 +1317,47 @@ void static ProcessGetData(CNode* pfrom, const CChainParams& chainparams, CConnm
             const CInv &inv = *it;
             it++;
 
-            // Send stream from relay memory
-            bool push = false;
-            auto mi = mapRelay.find(inv.hash);
             int nSendFlags = (inv.type == MSG_TX ? SERIALIZE_TRANSACTION_NO_WITNESS : 0);
-            if (mi != mapRelay.end()) {
-                //Veil dandelion protocol
-                if (veil::dandelion.IsInStemPhase(inv.hash)) {
+
+            // Handle if it's a dandelion transaction
+            if (veil::dandelion.CheckInventory(inv.hash)) {
+                if (!veil::dandelion.IsNodePendingSend(inv.hash, pfrom->GetId())) {
                     //Only relay dandelion transactions if pfrom node was sent the inventory
-                    if (!veil::dandelion.IsNodePendingSend(inv.hash, pfrom->GetId())) {
-                        LogPrintf("%s: WARNING node %d requested dandelion inventory that we did not send to them\n", __func__, pfrom->GetId());
-                        continue;
-                    }
-                    LogPrintf("%s: Sending dandelion inventory in stem phase to peer %d\n", __func__, pfrom->GetId());
-                    int64_t nTimeStemEnd = veil::dandelion.GetTimeStemPhaseEnd(inv.hash);
-                    connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::TX_DAND, *mi->second, nTimeStemEnd));
-                    veil::dandelion.MarkSent(inv.hash);
-                } else {
-                    // Normal transaction transmission
-                    connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::TX, *mi->second));
+                    LogPrintf("%s: WARNING node %d requested dandelion inventory that we did not send to them\n",
+                              __func__, pfrom->GetId());
+                    continue;
                 }
-                push = true;
+                int64_t nTimeStemEnd = veil::dandelion.GetTimeStemPhaseEnd(inv.hash);
+                if (nTimeStemEnd && (nTimeStemEnd > GetAdjustedTime())) {
+                    auto txinfo = mempool.info(inv.hash);  // Pull it from mempool
+                    LogPrintf("%s: Sending stemming dandelion TX to %d: %s\n", __func__, pfrom->GetId(), inv.hash.GetHex());
+                    connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::TX_DAND, *txinfo.tx, nTimeStemEnd));
+                    veil::dandelion.MarkSent(inv.hash);
+                    continue;
+                } else {
+                    LogPrintf("%s: Sending blooming dandelion TX to %d: %s\n", __func__, pfrom->GetId(), inv.hash.GetHex());
+                    // Fall through and let the mempool push handle it
+                }
+            }
+
+            auto mi = mapRelay.find(inv.hash);
+            if (mi != mapRelay.end()) {
+                // Normal transaction transmission
+                LogPrintf("%s: Sending relay TX for %d: %s\n", __func__, pfrom->GetId(), inv.hash.GetHex());
+                connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::TX, *mi->second));
+                continue;
             } else if (pfrom->timeLastMempoolReq) {
                 auto txinfo = mempool.info(inv.hash);
                 // To protect privacy, do not answer getdata using the mempool when
                 // that TX couldn't have been INVed in reply to a MEMPOOL request.
                 if (txinfo.tx && txinfo.nTime <= pfrom->timeLastMempoolReq) {
+                    LogPrintf("%s: Sending mempool TX for %d: %s\n", __func__, pfrom->GetId(), inv.hash.GetHex());
                     connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::TX, *txinfo.tx));
-                    push = true;
+                    continue;
                 }
             }
-            if (!push) {
-                vNotFound.push_back(inv);
-            }
+            LogPrintf("(debug) %s: couldn't find %s\n", __func__, inv.hash.GetHex());
+            vNotFound.push_back(inv);
         }
     } // release cs_main
 
@@ -2589,8 +2598,8 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         // Veil: check for dandelion
         int64_t nTimeStemPhase = 0;
         {
-            LOCK(veil::dandelion.cs);
             if (strCommand == NetMsgType::TX_DAND && !fEnableDandelion) {
+                // We shouldn't receive any TX_DAND if we're not enabled for dandelion
                 connman->PushMessage(pfrom, msgMaker.Make(NetMsgType::REJECT, strCommand, REJECT_DANDELION, std::string(
                         "Received tx_dand after opting out of dandelion")));
                 LOCK(cs_main);
@@ -4015,8 +4024,15 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
                     const uint256& hash = txinfo.tx->GetHash();
 
                     //Don't send any transactions in the stem phase, handle this elsewhere
-                    if (veil::dandelion.IsInStemPhase(hash))
-                        continue;
+                    if (veil::dandelion.CheckInventory(hash)) {
+                        LogPrintf("(debug) %s: Dandelion TX: %s\n", __func__, hash.GetHex());
+                        if (!veil::dandelion.IsNodePendingSend(hash, pto->GetId())) {
+                            LogPrintf("(debug) %s: Not our stem node\n", __func__);
+                            continue;
+                        } else {
+                            LogPrintf("(debug) %s: including in inventory\n", __func__);
+                        }
+                    }
 
                     CInv inv(MSG_TX, hash);
                     pto->setInventoryTxToSend.erase(hash);
@@ -4030,6 +4046,7 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
                     pto->filterInventoryKnown.insert(hash);
                     vInv.push_back(inv);
                     if (vInv.size() == MAX_INV_SZ) {
+                        LogPrintf("(debug) %s: Sending Inventory\n", __func__);
                         connman->PushMessage(pto, msgMaker.Make(NetMsgType::INV, vInv));
                         vInv.clear();
                     }

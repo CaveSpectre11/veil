@@ -14,7 +14,6 @@ namespace veil {
 struct Stem
 {
     int64_t nTimeStemEnd;
-    int64_t nTimeLastRoll;
     int64_t nNodeIDFrom;
     int64_t nNodeIDSentTo;
 };
@@ -32,14 +31,16 @@ public:
     const int64_t nDefaultStemTime = 120; //120 seconds
     //! Indicates the tx came from the current node
     const int64_t nDefaultNodeID = -1;
-    bool AddNew(const uint256& hashInventory);
-    void Add(const uint256& hashInventory, const int64_t& nTimeStemEnd, const int64_t& nNodeIDFrom);
+    bool AddNew(const uint256& hash);
+    void Add(const uint256& hash, const int64_t& nTimeStemEnd, const int64_t& nNodeIDFrom);
+    bool CheckInventory(const uint256& hash) const;
+    bool GetStemFromInventory(const uint256& hash, Stem &stem) const;
     bool IsFromNode(const uint256& hash, const int64_t nNodeID) const;
-    bool IsNodePendingSend(const uint256& hashInventory, const int64_t nNodeID);
-    int64_t GetTimeStemPhaseEnd(const uint256& hashObject) const;
+    bool IsNodePendingSend(const uint256& hash, const int64_t nNodeID);
+    int64_t GetTimeStemPhaseEnd(const uint256& hash) const;
     bool IsInStemPhase(const uint256& hash) const;
     bool IsSent(const uint256& hash) const;
-    bool IsQueuedToSend(const uint256& hashObject) const;
+    bool IsQueuedToSend(const uint256& hash) const;
     void SetInventorySent(const uint256& hash, const int64_t nNodeID);
     void MarkSent(const uint256& hash);
     void Process(const std::vector<CNode*>& vNodes);

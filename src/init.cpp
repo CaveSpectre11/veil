@@ -1795,9 +1795,9 @@ bool AppInitMain()
     }
 
     fEnableDandelion = !gArgs.GetBoolArg("-exchangesandservicesmode", false);
-    if (!fEnableDandelion) {
-        // Let other nodes know you opted out of dandelion, so you won't receive stem phase messages.
-        nLocalServices = ServiceFlags(nLocalServices | NODE_DANDELION_OPT_OUT);
+    nLocalServices = ServiceFlags(nLocalServices | NODE_DANDELION_OPT_OUT); // opt out of old dandelion
+    if (fEnableDandelion) {
+        nLocalServices = ServiceFlags(nLocalServices | NODE_DANDELION_V1);
     }
 
     // ********************************************************* Step 11: import blocks
