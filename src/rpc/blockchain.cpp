@@ -1,7 +1,7 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-2018 The Bitcoin Core developers
 // Copyright (c) 2015-2018 The PIVX developers
-// Copyright (c) 2019 The Veil developers
+// Copyright (c) 2018-2020 The Veil developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -454,7 +454,8 @@ static std::string EntryDescriptionString()
            "        \"descendant\" : n,   (numeric) modified fees (see above) of in-mempool descendants (including this one) in " + CURRENCY_UNIT + "\n"
            "    }\n"
            "    \"dandelion\" : {         (optional) Included if the transaction was Dandelion protocol\n"
-           "        \"stemstate\" :       (string) \"stem\" state or \"bloom\" state\n"
+           "        \"state\" :           (string) \"stem\" state or \"bloom\" state\n"
+           "        \"stemstate\" :       (string) Current stem state (\"new\", \"assigned\", \"notified\", \"sent\")\n"
            "        \"stemexpire\" :      (numeric) epoch time when stem will expire (or expired)\n"
            "        \"timetobloom\" :     (numeric) Time (in seconds) to bloom, or -1 if already in bloom state\n"
            "        \"nodefrom\" :        (numeric) peer node transaction received from\n"
@@ -481,16 +482,34 @@ static void entryToJSON(UniValue &info, const CTxMemPoolEntry &e) EXCLUSIVE_LOCK
 
     const CTransaction& tx = e.GetTx();
 
-    veil::Stem DandelionRecord;
-    if (veil::dandelion.GetStemFromInventory(tx.GetHash(), DandelionRecord)) {
+    Stem DandelionRecord;
+    if (dandelion.GetStemFromInventory(tx.GetHash(), DandelionRecord)) {
         UniValue dlion(UniValue::VOBJ);
+        std::string stemstate;
         int64_t ttb=DandelionRecord.nTimeStemEnd - GetAdjustedTime();
         if (ttb < 0) ttb = -1;
-        dlion.pushKV("stemstate", (ttb > 0 ? "stem" : "bloom"));
+        dlion.pushKV("state", (ttb > 0 ? "stem" : "bloom"));
+        switch (DandelionRecord.nState) {
+          case STEM_STATE_NEW:
+            stemstate = "new";
+            break;
+          case STEM_STATE_ASSIGNED:
+            stemstate = "assigned";
+            break;
+          case STEM_STATE_NOTIFIED:
+            stemstate = "notified";
+            break;
+          case STEM_STATE_SENT:
+            stemstate = "sent";
+            break;
+          default:
+            stemstate = "(Unknown)";
+        }
+        dlion.pushKV("stemstate", stemstate);
         dlion.pushKV("stemexpire", DandelionRecord.nTimeStemEnd);
         dlion.pushKV("timetobloom", ttb);
         dlion.pushKV("nodefrom", DandelionRecord.nNodeIDFrom);
-        dlion.pushKV("nodeto", DandelionRecord.nNodeIDSentTo);
+        dlion.pushKV("nodeto", DandelionRecord.nNodeIDTo);
         info.pushKV("dandelion", dlion);
     }
 

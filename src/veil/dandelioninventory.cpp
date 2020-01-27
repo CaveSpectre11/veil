@@ -1,11 +1,9 @@
-// Copyright (c) 2018-2019 Veil developers
+// Copyright (c) 2018-2020 Veil developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <timedata.h>
 #include "dandelioninventory.h"
-
-namespace veil {
 
 DandelionInventory dandelion;
 
@@ -27,10 +25,12 @@ void DandelionInventory::Add(const uint256& hash, const int64_t& nTimeStemEnd, c
     Stem stem;
     stem.nTimeStemEnd = nTimeStemEnd;
     stem.nNodeIDFrom = nNodeIDFrom;
+    stem.nNodeIDTo = nDefaultNodeID;
+    stem.nState = STEM_STATE_NEW;
 
     LogPrintf("(debug) %s: Adding Dandelion TX from %d; end %d: %s\n",
               __func__, nNodeIDFrom, nTimeStemEnd, hash.GetHex());
-    LOCK(veil::dandelion.cs);
+    LOCK(dandelion.cs);
     mapStemInventory.emplace(std::make_pair(hash, stem));
 }
 
@@ -44,7 +44,7 @@ bool DandelionInventory::CheckInventory(const uint256& hash) const
 // Load the dandelion record if it's in the inventory; return false if it's not
 bool DandelionInventory::GetStemFromInventory(const uint256& hash, Stem& stem) const
 {
-    LOCK(veil::dandelion.cs);
+    LOCK(dandelion.cs);
     auto it = mapStemInventory.find(hash);
     if (it == mapStemInventory.end()) {
         return false;
@@ -53,6 +53,16 @@ bool DandelionInventory::GetStemFromInventory(const uint256& hash, Stem& stem) c
     return true;
 }
 
+bool DandelionInventory::IsInStemPhase(const uint256& hash) const
+{
+    Stem stem;
+    if (!GetStemFromInventory(hash, stem))
+        return false;
+
+    return stem.nTimeStemEnd > GetAdjustedTime();
+}
+
+// Return true if hash is dandelion and assigned to the supplied node
 int64_t DandelionInventory::GetTimeStemPhaseEnd(const uint256& hash) const
 {
     Stem stem;
@@ -71,23 +81,50 @@ bool DandelionInventory::IsFromNode(const uint256& hash, const int64_t nNodeID) 
     return stem.nNodeIDFrom == nNodeID;
 }
 
-bool DandelionInventory::IsInStemPhase(const uint256& hash) const
+bool DandelionInventory::IsAssignedToNode(const uint256& hash, const int64_t nNodeID)
 {
     Stem stem;
     if (!GetStemFromInventory(hash, stem))
         return false;
 
-    return stem.nTimeStemEnd > GetAdjustedTime();
+    if (stem.nState != STEM_STATE_ASSIGNED) {
+        LogPrintf("%s: Dandelion TX not assigned: %s\n", __func__, hash.GetHex());
+        return false;
+    }
+
+    return stem.nNodeIDTo == nNodeID;
 }
 
-//Only send to a node that requests the tx if the inventory was broadcast to this node
-bool DandelionInventory::IsNodePendingSend(const uint256& hash, const int64_t nNodeID)
+bool DandelionInventory::IsNodeNotified(const uint256& hash) const
 {
-    Stem stem;
-    if (!GetStemFromInventory(hash, stem))
-        return false;
+    //If no knowledge of this hash, then assume safe to send
+    if (!mapStemInventory.count(hash)) {
+        // TODO: shouldn't ever be the case, and would be really bad.  Should probably assert.
+        LogPrintf("%s: Dandelion TX not found: %s\n", __func__, hash.GetHex());
+        return true;
+    }
 
-    return stem.nNodeIDSentTo == nNodeID;
+    return mapStemInventory.at(hash).nState == STEM_STATE_NOTIFIED;
+}
+
+bool DandelionInventory::SetNodeNotified(const uint256& hash, const int64_t nNodeID)
+{
+    if (!mapStemInventory.count(hash)) {
+        // TODO: shouldn't ever be the case, and would be really bad.  Should probably assert.
+        LogPrintf("%s: Dandelion TX not found: %s\n", __func__, hash.GetHex());
+        return false;
+    }
+
+    // We might be called when trying to send to the wrong node; just tell 'em no
+    if (mapStemInventory[hash].nNodeIDTo != nNodeID) {
+        LogPrintf("(debug) %s: Not ours %d != %d: %s\n", __func__, mapStemInventory[hash].nNodeIDTo, nNodeID, hash.GetHex());
+        return false;
+    }
+
+    LogPrintf("(debug) %s: Marking dandelion tx peer notified: %s\n", __func__, hash.GetHex());
+    LOCK(dandelion.cs);
+    mapStemInventory.at(hash).nState = STEM_STATE_NOTIFIED;
+    return true;
 }
 
 bool DandelionInventory::IsSent(const uint256& hash) const
@@ -97,36 +134,20 @@ bool DandelionInventory::IsSent(const uint256& hash) const
     if (!GetStemFromInventory(hash, stem))
         return true;
 
-    return stem.nNodeIDSentTo != 0;
-}
-
-void DandelionInventory::SetInventorySent(const uint256& hash, const int64_t nNodeID)
-{
-    if (!mapStemInventory.count(hash))
-        return;
-    mapStemInventory.at(hash).nNodeIDSentTo = nNodeID;
-    setPendingSend.erase(hash);
-    mapNodeToSentTo.erase(hash);
-}
-
-bool DandelionInventory::IsQueuedToSend(const uint256& hash) const
-{
-    LOCK(veil::dandelion.cs);
-    //If no knowledge of this hash, then assume safe to send
-    if (!mapStemInventory.count(hash))
-        return true;
-
-    return static_cast<bool>(setPendingSend.count(hash));
+    return stem.nState == STEM_STATE_SENT;
 }
 
 void DandelionInventory::MarkSent(const uint256& hash)
 {
-    LogPrintf("(debug) %s: Erasing sent dandelion tx\n", __func__);
-    // Todo - retain it so we can handle if we don't see it bloomed
-    LOCK(veil::dandelion.cs);
-    mapStemInventory.erase(hash);
-    setPendingSend.erase(hash);
-    mapNodeToSentTo.erase(hash);
+    if (!mapStemInventory.count(hash)) {
+        // TODO: shouldn't ever be the case, and would be really bad.  Should probably assert.
+        LogPrintf("%s: Dandelion TX not found: %s\n", __func__, hash.GetHex());
+        return;
+    }
+
+    LogPrintf("(debug) %s: Marking dandelion tx sent: %s\n", __func__, hash.GetHex());
+    LOCK(dandelion.cs);
+    mapStemInventory.at(hash).nState = STEM_STATE_SENT; 
 }
 
 void DandelionInventory::Process(const std::vector<CNode*>& vNodes)
@@ -137,29 +158,32 @@ void DandelionInventory::Process(const std::vector<CNode*>& vNodes)
        return;
     }
 
-    //Clear all the old node destinations
-    mapNodeToSentTo.clear();
-    LOCK(veil::dandelion.cs);
+    LOCK(dandelion.cs);
     auto mapStem = mapStemInventory;
     for (auto mi : mapStem) {
-        auto hash = mi.first;
-        auto stem = mi.second;
+        uint256 hash = mi.first;
+        Stem stem = mi.second;
 
         // Todo; if expired, we need to bloom it
         if (stem.nTimeStemEnd < GetAdjustedTime()) {
-            mapStemInventory.erase(mi.first);
-            setPendingSend.erase(mi.first);
+            mapStemInventory.erase(hash);
             LogPrintf("(debug) %s: Erasing expired dandelion tx\n", __func__);
             continue;
         }
 
-        //Already marked this to send
-        if (setPendingSend.count(mi.first))
+        // Already in the system
+        if (stem.nState != STEM_STATE_NEW)
             continue;
 
-        //Set the index to send to
-        int64_t nNodeID;
+        // Set the index to send to
+        int64_t nNodeID = -1;
         CNode* pNode;
+        if ((vNodes.size() == 1) && (vNodes[0]->GetId() == stem.nNodeIDFrom)) {
+            // Houston, we have a problem.
+            LogPrintf("(debug) %s: Only node is where we got the transaction from\n", __func__);
+            // let it try again later if another node comes online
+            continue;
+        }
         do {
             int nRand = GetRandInt(static_cast<int>(vNodes.size() - 1));
             pNode = vNodes[nRand];
@@ -167,16 +191,11 @@ void DandelionInventory::Process(const std::vector<CNode*>& vNodes)
             LogPrintf("(debug) %s: Selecting nNodeID %d (rand %d)\n", __func__, nNodeID, nRand);
         } while (nNodeID == stem.nNodeIDFrom);
 
-        mapNodeToSentTo.insert(std::make_pair<uint256&, int64_t& >(hash, nNodeID));
+        LogPrintf("(debug) %s: Marking dandelion tx assigned to %d: %s\n", __func__, nNodeID, hash.GetHex());
+        LOCK(dandelion.cs);
+        mapStemInventory.at(hash).nNodeIDTo = nNodeID;
+        mapStemInventory.at(hash).nState = STEM_STATE_ASSIGNED; 
 
-        setPendingSend.emplace(hash);
         pNode->fSendMempool = true;	// Juice it to get the mempool.
     }
 }
-
-bool DandelionInventory::IsCorrectNodeToSend(const uint256& hash, const int64_t nNodeID)
-{
-    return mapNodeToSentTo[hash] == nNodeID;
-}
-
-} // end namespace

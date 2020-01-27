@@ -1,5 +1,5 @@
 // Copyright (c) 2011-2019 The Bitcoin Core developers
-// Copyright (c) 2018-2019 The Veil developers
+// Copyright (c) 2018-2020 The Veil developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -448,8 +448,8 @@ void SendCoinsDialog::PrepareTransactionFinished()
         coinControlUpdateLabels();
         uint256 hashCurrentTx = m_prepareData->tx->getWtx()->get().GetHash();
         if (fDandelion) {
-            LOCK(veil::dandelion.cs);
-            veil::dandelion.Add(hashCurrentTx, GetAdjustedTime() + veil::dandelion.nDefaultStemTime, veil::dandelion.nDefaultNodeID);
+            LOCK(dandelion.cs);
+            dandelion.Add(hashCurrentTx, GetAdjustedTime() + dandelion.nDefaultStemTime, dandelion.nDefaultNodeID);
         }
         Q_EMIT coinsSent(hashCurrentTx);
     }

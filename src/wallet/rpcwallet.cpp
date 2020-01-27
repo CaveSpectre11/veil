@@ -1,6 +1,6 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-2019 The Bitcoin Core developers
-// Copyright (c) 2018-2019 The Veil developers
+// Copyright (c) 2018-2020 The Veil developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -647,8 +647,8 @@ static UniValue sendtoaddress(const JSONRPCRequest& request)
     // This isn't going to work since it's already sent it above.  Need to put the dandelion code into SendMoney.
     // Also need some error processing for SendMoney
     if (fDandelion){
-        LOCK(veil::dandelion.cs);
-        veil::dandelion.Add(tx->GetHash(), GetAdjustedTime() + veil::dandelion.nDefaultStemTime, veil::dandelion.nDefaultNodeID);
+        LOCK(dandelion.cs);
+        dandelion.Add(tx->GetHash(), GetAdjustedTime() + dandelion.nDefaultStemTime, dandelion.nDefaultNodeID);
     }
 
     return tx->GetHash().GetHex();

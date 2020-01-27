@@ -1,6 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2019 The Bitcoin Core developers
-// Copyright (c) 2018-2019 The Veil developers
+// Copyright (c) 2018-2020 The Veil developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -2078,7 +2078,7 @@ void CConnman::ThreadMessageHandler()
 
         // Even if dandelion disabled, process our dandelion sends
         if (vDandelionNodes.size() > 0) {
-           veil::dandelion.Process(vDandelionNodes);
+           dandelion.Process(vDandelionNodes);
         }
 
         bool fMoreWork = false;
@@ -2825,11 +2825,16 @@ CNode::~CNode()
 
 void CNode::AskFor(const CInv& inv)
 {
-    if (mapAskFor.size() > MAPASKFOR_MAX_SZ || setAskFor.size() > SETASKFOR_MAX_SZ)
+    if (mapAskFor.size() > MAPASKFOR_MAX_SZ || setAskFor.size() > SETASKFOR_MAX_SZ) {
+        LogPrintf("(debug) %s: Ask for sizes map: %d (%d), set: %d (%d)\n",
+                  __func__, mapAskFor.size(), MAPASKFOR_MAX_SZ, setAskFor.size(), SETASKFOR_MAX_SZ);
         return;
+    }
     // a peer may not have multiple non-responded queue positions for a single inv item
-    if (!setAskFor.insert(inv.hash).second)
+    if (!setAskFor.insert(inv.hash).second) {
+        LogPrintf("(debug) %s: No second from insert\n", __func__);
         return;
+    }
 
     // We're using mapAskFor as a priority queue,
     // the key is the earliest time the request can be sent
