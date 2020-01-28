@@ -1321,7 +1321,7 @@ void static ProcessGetData(CNode* pfrom, const CChainParams& chainparams, CConnm
 
             // Handle if it's a dandelion transaction
             if (dandelion.CheckInventory(inv.hash)) {
-                if (!dandelion.IsAssignedToNode(inv.hash, pfrom->GetId())) {
+                if (!dandelion.IsInStateAndAssigned(inv.hash, STEM_STATE_NOTIFIED, pfrom->GetId())) {
                     //Only relay dandelion transactions if pfrom node was sent the inventory
                     LogPrintf("%s: WARNING node %d requested dandelion inventory that we did not send to them\n",
                               __func__, pfrom->GetId());
@@ -2354,6 +2354,8 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             }
             else
             {
+                LogPrintf("(debug) %s: fAlreadyHave=%d, fImporting=%d, fReindex=%d, IsInitial=%d: %s\n",
+                          __func__, fAlreadyHave, fImporting, fReindex, IsInitialBlockDownload(), inv.ToString());
                 pfrom->AddInventoryKnown(inv);
                 if (fBlocksOnly) {
                     LogPrint(BCLog::NET, "transaction (%s) inv sent in violation of protocol peer=%d\n", inv.hash.ToString(), pfrom->GetId());

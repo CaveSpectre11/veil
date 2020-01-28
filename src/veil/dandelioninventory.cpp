@@ -15,21 +15,22 @@ bool DandelionInventory::AddNew(const uint256& hash)
         return false;
     }
 
-    // TODO - randomize StemTime
-    Add(hash, GetAdjustedTime() + nDefaultStemTime, nDefaultNodeID);
+    // Add will deduct StemTimeDecay
+    uint64_t nStemTime = nDefaultStemTime + GetRandInt(nStemTimeRandomizer) + nStemTimeDecay;
+    Add(hash, GetAdjustedTime() + nStemTime, nDefaultNodeID);
     return true;
 }
 
 void DandelionInventory::Add(const uint256& hash, const int64_t& nTimeStemEnd, const int64_t& nNodeIDFrom)
 {
     Stem stem;
-    stem.nTimeStemEnd = nTimeStemEnd;
+    stem.nTimeStemEnd = nTimeStemEnd-nStemTimeDecay;
     stem.nNodeIDFrom = nNodeIDFrom;
     stem.nNodeIDTo = nDefaultNodeID;
     stem.nState = STEM_STATE_NEW;
 
     LogPrintf("(debug) %s: Adding Dandelion TX from %d; end %d: %s\n",
-              __func__, nNodeIDFrom, nTimeStemEnd, hash.GetHex());
+              __func__, nNodeIDFrom, stem.nTimeStemEnd, hash.GetHex());
     LOCK(dandelion.cs);
     mapStemInventory.emplace(std::make_pair(hash, stem));
 }
@@ -70,6 +71,27 @@ int64_t DandelionInventory::GetTimeStemPhaseEnd(const uint256& hash) const
         return 0;
 
     return stem.nTimeStemEnd;
+}
+
+bool DandelionInventory::IsInState(const uint256& hash, const uint16_t state) const
+{
+    Stem stem;
+    if (!GetStemFromInventory(hash, stem))
+        return false;
+
+    return stem.nState == state;
+}
+
+bool DandelionInventory::IsInStateAndAssigned(const uint256& hash, const uint16_t state, const int64_t nNodeID) const
+{
+    Stem stem;
+    if (!GetStemFromInventory(hash, stem))
+        return false;
+
+    if (stem.nState != state)
+        return false;
+
+    return stem.nNodeIDTo == nNodeID;
 }
 
 bool DandelionInventory::IsFromNode(const uint256& hash, const int64_t nNodeID) const

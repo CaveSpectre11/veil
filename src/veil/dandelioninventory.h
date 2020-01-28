@@ -41,6 +41,8 @@ public:
     bool GetStemFromInventory(const uint256& hash, Stem &stem) const;
     bool IsInStemPhase(const uint256& hash) const;
     int64_t GetTimeStemPhaseEnd(const uint256& hash) const;
+    bool IsInState(const uint256& hash, const uint16_t state) const;
+    bool IsInStateAndAssigned(const uint256& hash, const uint16_t state, const int64_t nNodeID) const;
     bool IsFromNode(const uint256& hash, const int64_t nNodeID) const;
     bool IsAssignedToNode(const uint256& hash, const int64_t nNodeID);
     bool IsNodeNotified(const uint256& hash) const;
