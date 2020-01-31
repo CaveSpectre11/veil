@@ -2092,11 +2092,11 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
                 FastRandomContext insecure_rand;
                 if (addr.IsRoutable())
                 {
-                    LogPrint(BCLog::NET, "ProcessMessages: advertising address %s\n", addr.ToString());
+                    LogPrint(BCLog::NET, "%s: advertising address %s\n", __func__, addr.ToString());
                     pfrom->PushAddress(addr, insecure_rand);
                 } else if (IsPeerAddrLocalGood(pfrom)) {
                     addr.SetIP(addrMe);
-                    LogPrint(BCLog::NET, "ProcessMessages: advertising address %s\n", addr.ToString());
+                    LogPrint(BCLog::NET, "%s: advertising address %s\n", __func__, addr.ToString());
                     pfrom->PushAddress(addr, insecure_rand);
                 }
             }
@@ -2328,7 +2328,17 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
                 return true;
 
             bool fAlreadyHave = AlreadyHave(inv);
-            LogPrint(BCLog::NET, "got inv: %s  %s peer=%d\n", inv.ToString(), fAlreadyHave ? "have" : "new", pfrom->GetId());
+            // If we're still in stem phase and we received it, either it's
+            // passed around, or it's blooming.  We want to get it.
+            if (dandelion.IsInStemPhase(inv.hash)) {
+                fAlreadyHave = false;
+                pfrom->setAskFor.erase(inv.hash);
+                mapAlreadyAskedFor.erase(inv.hash);
+                LogPrint(BCLog::NET, "got inv for dandelion update from peer=%d: %s\n", pfrom->GetId(), inv.ToString());
+            } else {
+                LogPrint(BCLog::NET, "got inv: %s  %s peer=%d\n", inv.ToString(), fAlreadyHave ? "have" : "new", pfrom->GetId());
+            }
+
 
             if (inv.type == MSG_TX) {
                 inv.type |= nFetchFlags;
@@ -2626,11 +2636,32 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
 
         std::list<CTransactionRef> lRemovedTxn;
 
+        // If we're still in stem phase and we received it, either it's
+        // passed around, or it's blooming.  It's already in our mempool
+        // so deal with it and get out.
+        if (dandelion.IsInStemPhase(inv.hash)) {
+            int64_t nNewStemPhaseEnd = inv.nTimeStemPhaseEnd-dandelion.nStemTimeDecay;
+            dandelion.DeleteFromInventory(inv.hash);
+            if (inv.IsDandelion() && (nNewStemPhaseEnd > GetAdjustedTime())) {
+                // It's received from a downstream stem, or perhaps
+                // a retransmission to us, either way, adjust our
+                // record.
+                LogPrintf("Received updated dandelion transaction %s, adjusting rebroadcast until %d\n",
+                          inv.hash.GetHex(), nNewStemPhaseEnd);
+                dandelion.Add(inv.hash, inv.nTimeStemPhaseEnd, pfrom->GetId());
+            } else {
+                LogPrintf("Blooming updated dandelion transaction %s\n", inv.hash.GetHex());
+                RelayTransaction(tx, connman);
+            }
+            return true;
+        }
+
         if (!tx.IsZerocoinSpend() && !AlreadyHave(inv) &&
             AcceptToMemoryPool(mempool, state, ptx, &fMissingInputs, &lRemovedTxn, false /* bypass_limits */, 0 /* nAbsurdFee */)) {
             mempool.check(pcoinsTip.get());
             if (inv.IsDandelion()) {
-                LogPrintf("Received dandelion transaction %s, delaying full rebroadcast until %d\n", inv.hash.GetHex(), inv.nTimeStemPhaseEnd);
+                LogPrintf("Received dandelion transaction %s, delaying full rebroadcast until %d\n",
+                          inv.hash.GetHex(), inv.nTimeStemPhaseEnd-dandelion.nStemTimeDecay);
                 dandelion.Add(inv.hash, inv.nTimeStemPhaseEnd, pfrom->GetId());
             } else {
                 RelayTransaction(tx, connman);
@@ -4310,7 +4341,7 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
         while (!pto->mapAskFor.empty() && (*pto->mapAskFor.begin()).first <= nNow)
         {
             const CInv& inv = (*pto->mapAskFor.begin()).second;
-            if (!AlreadyHave(inv))
+            if (!AlreadyHave(inv) || dandelion.IsInStemPhase(inv.hash))
             {
                 LogPrint(BCLog::NET, "Requesting %s peer=%d\n", inv.ToString(), pto->GetId());
                 vGetData.push_back(inv);

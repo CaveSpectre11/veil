@@ -22,7 +22,8 @@ struct Stem
     int64_t nTimeStemEnd;
     int64_t nNodeIDFrom;
     int64_t nNodeIDTo;
-    int64_t nState;
+    int64_t nNotifyEnd;
+    int16_t nState;
 };
 
 class DandelionInventory
@@ -33,10 +34,12 @@ public:
     const int64_t nDefaultStemTime    = 60;  // 60 seconds
     const int64_t nStemTimeRandomizer = 120; // nDefaultStemTime + 0..120 seconds
     const int64_t nStemTimeDecay      = 10;  // 10 seconds of decay per hop; hops 6-18
+    const int64_t nDefaultNotifyExpire = 5;  // Time to expire a notify and retry
     const int64_t nDefaultNodeID      = -1;  // Indicates the tx came from the current node
 
     bool AddNew(const uint256& hash);
     void Add(const uint256& hash, const int64_t& nTimeStemEnd, const int64_t& nNodeIDFrom);
+    void DeleteFromInventory(const uint256& hash);
     bool CheckInventory(const uint256& hash) const;
     bool GetStemFromInventory(const uint256& hash, Stem &stem) const;
     bool IsInStemPhase(const uint256& hash) const;

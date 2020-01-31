@@ -35,6 +35,11 @@ void DandelionInventory::Add(const uint256& hash, const int64_t& nTimeStemEnd, c
     mapStemInventory.emplace(std::make_pair(hash, stem));
 }
 
+void DandelionInventory::DeleteFromInventory(const uint256& hash)
+{
+    mapStemInventory.erase(hash); // doesn't matter if it's not there
+}
+
 // Check if the hash was a Dandelion transaction
 bool DandelionInventory::CheckInventory(const uint256& hash) const
 {
@@ -193,6 +198,14 @@ void DandelionInventory::Process(const std::vector<CNode*>& vNodes)
             continue;
         }
 
+        if (((stem.nState == STEM_STATE_NOTIFIED) || (stem.nState == STEM_STATE_ASSIGNED)) &&
+                                                    (stem.nNotifyEnd <= GetAdjustedTime())) {
+            LogPrintf("(debug) %s: Stem expired %d<=%d: %s\n", __func__, stem.nNotifyEnd, GetAdjustedTime(), hash.GetHex());
+            // If it's been too long, reassign it
+            stem.nNotifyEnd = 0;
+            stem.nState = STEM_STATE_NEW;
+        }
+
         // Already in the system
         if (stem.nState != STEM_STATE_NEW)
             continue;
@@ -212,12 +225,16 @@ void DandelionInventory::Process(const std::vector<CNode*>& vNodes)
             nNodeID = pNode->GetId();
             LogPrintf("(debug) %s: Selecting nNodeID %d (rand %d)\n", __func__, nNodeID, nRand);
         } while (nNodeID == stem.nNodeIDFrom);
+        // Note:  We could also make sure we're not sending it to the same node we aborted
+        // a previous assignment from; but for now we'll try just retrying.
 
         LogPrintf("(debug) %s: Marking dandelion tx assigned to %d: %s\n", __func__, nNodeID, hash.GetHex());
         LOCK(dandelion.cs);
         mapStemInventory.at(hash).nNodeIDTo = nNodeID;
+        // Note: If nNotifyEnd is after the expire time, doesn't matter, we'll bloom.
+        mapStemInventory.at(hash).nNotifyEnd = GetAdjustedTime() + nDefaultNotifyExpire;
         mapStemInventory.at(hash).nState = STEM_STATE_ASSIGNED; 
 
-        pNode->fSendMempool = true;	// Juice it to get the mempool.
+        pNode->fSendMempool = true;	// Juice the peer to get the mempool.
     }
 }
