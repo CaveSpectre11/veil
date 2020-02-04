@@ -647,8 +647,7 @@ static UniValue sendtoaddress(const JSONRPCRequest& request)
     // This isn't going to work since it's already sent it above.  Need to put the dandelion code into SendMoney.
     // Also need some error processing for SendMoney
     if (fDandelion){
-        LOCK(dandelion.cs);
-        dandelion.Add(tx->GetHash(), GetAdjustedTime() + dandelion.nDefaultStemTime, dandelion.nDefaultNodeID);
+        dandelion.AddNew(tx->GetHash());
     }
 
     return tx->GetHash().GetHex();

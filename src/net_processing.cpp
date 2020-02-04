@@ -1335,7 +1335,7 @@ void static ProcessGetData(CNode* pfrom, const CChainParams& chainparams, CConnm
                     dandelion.MarkSent(inv.hash);
                     continue;
                 } else {
-                    LogPrintf("%s: Sending blooming dandelion TX to %d: %s\n", __func__, pfrom->GetId(), inv.hash.GetHex());
+                    LogPrintf("%s: Sending fluffing dandelion TX to %d: %s\n", __func__, pfrom->GetId(), inv.hash.GetHex());
                     // Fall through and let the mempool push handle it
                 }
             }
@@ -1356,7 +1356,6 @@ void static ProcessGetData(CNode* pfrom, const CChainParams& chainparams, CConnm
                     continue;
                 }
             }
-            LogPrintf("(debug) %s: couldn't find %s\n", __func__, inv.hash.GetHex());
             vNotFound.push_back(inv);
         }
     } // release cs_main
@@ -2329,7 +2328,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
 
             bool fAlreadyHave = AlreadyHave(inv);
             // If we're still in stem phase and we received it, either it's
-            // passed around, or it's blooming.  We want to get it.
+            // passed around, or it's fluffling.  We want to get it.
             if (dandelion.IsInStemPhase(inv.hash)) {
                 fAlreadyHave = false;
                 pfrom->setAskFor.erase(inv.hash);
@@ -2342,7 +2341,6 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
 
             if (inv.type == MSG_TX) {
                 inv.type |= nFetchFlags;
-                LogPrintf("(debug) %s: Setting fetch flags %08x for %s\n", __func__, nFetchFlags, inv.ToString());
             }
 
             if (inv.type == MSG_BLOCK) {
@@ -2364,13 +2362,10 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             }
             else
             {
-                LogPrintf("(debug) %s: fAlreadyHave=%d, fImporting=%d, fReindex=%d, IsInitial=%d: %s\n",
-                          __func__, fAlreadyHave, fImporting, fReindex, IsInitialBlockDownload(), inv.ToString());
                 pfrom->AddInventoryKnown(inv);
                 if (fBlocksOnly) {
                     LogPrint(BCLog::NET, "transaction (%s) inv sent in violation of protocol peer=%d\n", inv.hash.ToString(), pfrom->GetId());
                 } else if (!fAlreadyHave && !fImporting && !fReindex && !IsInitialBlockDownload()) {
-                    LogPrintf("(debug) %s: Ask for %s\n", __func__, inv.ToString());
                     pfrom->AskFor(inv);
                 }
             }
@@ -2637,7 +2632,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         std::list<CTransactionRef> lRemovedTxn;
 
         // If we're still in stem phase and we received it, either it's
-        // passed around, or it's blooming.  It's already in our mempool
+        // passed around, or it's fluffing.  It's already in our mempool
         // so deal with it and get out.
         if (dandelion.IsInStemPhase(inv.hash)) {
             int64_t nNewStemPhaseEnd = inv.nTimeStemPhaseEnd-dandelion.nStemTimeDecay;
@@ -2650,7 +2645,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
                           inv.hash.GetHex(), nNewStemPhaseEnd);
                 dandelion.Add(inv.hash, inv.nTimeStemPhaseEnd, pfrom->GetId());
             } else {
-                LogPrintf("Blooming updated dandelion transaction %s\n", inv.hash.GetHex());
+                LogPrintf("Broadcasting updated dandelion transaction %s\n", inv.hash.GetHex());
                 RelayTransaction(tx, connman);
             }
             return true;
@@ -4061,19 +4056,13 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
                     // Don't send any dandelion inventory unless marked for sending
                     if (dandelion.CheckInventory(hash)) {
                         LogPrintf("(debug) %s: Relay Dandelion TX: %s\n", __func__, hash.GetHex());
-                        if (!dandelion.IsAssignedToNode(hash, pto->GetId())) {
-                            LogPrintf("(debug) %s: Not assigned to %d: %s\n", __func__, pto->GetId(), hash.GetHex());
-                            continue;
-                        }
                         if (dandelion.IsFromNode(hash, pto->GetId())) {
-                            LogPrintf("(debug) %s: Don't send back to %d: %s\n", __func__, pto->GetId(), hash.GetHex());
                             continue;
                         }
                         if (!dandelion.SetNodeNotified(hash, pto->GetId())) {
                             LogPrintf("(debug) %s: %d isn't correct node: %s\n", __func__, pto->GetId(), hash.GetHex());
                             continue;
                         }
-                        LogPrintf("(debug) %s: including in inventory\n", __func__);
                     }
 
                     CInv inv(MSG_TX, hash);
@@ -4088,7 +4077,6 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
                     pto->filterInventoryKnown.insert(hash);
                     vInv.push_back(inv);
                     if (vInv.size() == MAX_INV_SZ) {
-                        LogPrintf("(debug) %s: Sending Inventory\n", __func__);
                         connman->PushMessage(pto, msgMaker.Make(NetMsgType::INV, vInv));
                         vInv.clear();
                     }
@@ -4103,26 +4091,6 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
                 vInvTx.reserve(pto->setInventoryTxToSend.size());
                 for (std::set<uint256>::iterator it = pto->setInventoryTxToSend.begin();
                      it != pto->setInventoryTxToSend.end(); it++) {
-//                    // Don't send any dandelion inventory unless marked for sending
-//                    if (dandelion.CheckInventory(*it)) {
-//                        uint256 hash = *it;
-//                        LogPrintf("(debug) %s: Relay Dandelion TX: %s\n", __func__, hash.GetHex());
-//                        if (!dandelion.IsAssignedToNode(hash, pto->GetId())) {
-//                            LogPrintf("(debug) %s: Not assigned to %d: %s\n", __func__, pto->GetId(), hash.GetHex());
-//                            continue;
-//                        }
-//                        //Don't send to the same node that sent the tx here
-//                        if (dandelion.IsFromNode(hash, pto->GetId())) {
-//                            LogPrintf("(debug) %s: Don't send back to %d: %s\n", __func__, pto->GetId(), hash.GetHex());
-//                            continue;
-//                        }
-//
-//                        if(!dandelion.SetNodeNotified(*it, pto->GetId())) {
-//                            LogPrintf("(debug) %s: %d isn't correct node: %s\n", __func__, pto->GetId(), hash.GetHex());
-//                            continue;
-//                        }
-//                    }
-
                     vInvTx.push_back(it);
                 }
                 CAmount filterrate = 0;
@@ -4164,10 +4132,8 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
                     //Veil: dandelion broadcast
                     int64_t nTimeStemPhaseEnd = 0;
                     if (dandelion.IsInStemPhase(hash)) {
-                        LogPrintf("(debug) %s: Relaying to %d: %s\n", __func__, pto->GetId(), (*it).ToString());
                         //Don't send stem phase to more than one peer
                         if (dandelion.IsSent(hash)) {
-                            LogPrintf("(debug) %s: Already sent %s\n", __func__, (*it).ToString());
                             continue;
                         }
 

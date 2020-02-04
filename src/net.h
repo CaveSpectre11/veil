@@ -322,6 +322,8 @@ public:
 
     int32_t GetDandelionNodeCount();
     int32_t GetDandelionNodes(std::vector<CNode *> &vDandelionNodes);
+    void SetSendMempool(int64_t nNodeID);
+
 private:
     struct ListenSocket {
         SOCKET socket;

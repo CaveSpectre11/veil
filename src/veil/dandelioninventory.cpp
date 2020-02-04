@@ -7,6 +7,66 @@
 
 DandelionInventory dandelion;
 
+bool DandelionInventory::SelectPeerRoutes(int64_t nNodeID, DandelionRoute& route)
+{
+    if (!g_connman) return false; // then there's no connection manager
+
+    std::vector<CNode *>vDandelionNodes;
+    int32_t nNodeCount;
+    nNodeCount = g_connman->GetDandelionNodes(vDandelionNodes);
+
+    if (!nNodeCount || (nNodeID == -1 && nNodeCount < 2)) return false; // then there's no dandelion nodes
+
+    route.vRoutes.clear();
+    // Select the routes
+    for (int i=0; i<nPeerRouteCount; i++) {
+        int64_t nPeerNodeID;
+        std::vector<int64_t> v = route.vRoutes;
+        do {
+            int nRand = GetRandInt(static_cast<int>(nNodeCount - 1));
+            CNode *pNode = vDandelionNodes[nRand];
+            nPeerNodeID = pNode->GetId();
+            LogPrintf("(debug) %s: Selecting output %d for input %d\n", __func__, nPeerNodeID, nNodeID);
+        } while ((nPeerNodeID == nNodeID)           // If output same as input or
+                || ((nNodeCount > nPeerRouteCount) // Enough peers and
+                                                   // this one already is selected
+                     && (std::find(v.begin(), v.end(), nPeerNodeID) != v.end())));
+        route.vRoutes.emplace_back(nPeerNodeID);
+    }
+
+    // Set the route expire time
+    route.expireTime = GetAdjustedTime() + nDefaultRouteTime + GetRandInt(nRouteTimeRandomizer);
+
+    // update the map
+    LOCK(dandelion.routes);
+    mapDandelionRoutes.erase(nNodeID);
+    mapDandelionRoutes.emplace(std::make_pair(nNodeID, route));
+}
+
+bool DandelionInventory::GetRoute(const int64_t nNodeID, DandelionRoute& route)
+{
+    auto it = mapDandelionRoutes.find(nNodeID);
+    if (it != mapDandelionRoutes.end()) {
+        route = it->second;
+        if (route.expireTime >= GetAdjustedTime())
+            return true;
+    }
+
+    // it doesn't exist or it's expired.
+    return(SelectPeerRoutes(nNodeID, route));
+}
+
+int64_t DandelionInventory::GetPeerNode(const int64_t nNodeID)
+{
+    DandelionRoute route;
+
+    if (!GetRoute(nNodeID, route)) {
+	return -1;
+    }
+
+    return route.vRoutes[GetRandInt(static_cast<int>(route.vRoutes.size() - 1))];
+}
+
 // Return false if we didn't add the dandelion transaction; Don't add it if there aren't
 // any dandelion peers.
 bool DandelionInventory::AddNew(const uint256& hash)
@@ -31,7 +91,7 @@ void DandelionInventory::Add(const uint256& hash, const int64_t& nTimeStemEnd, c
 
     LogPrintf("(debug) %s: Adding Dandelion TX from %d; end %d: %s\n",
               __func__, nNodeIDFrom, stem.nTimeStemEnd, hash.GetHex());
-    LOCK(dandelion.cs);
+    LOCK(dandelion.stems);
     mapStemInventory.emplace(std::make_pair(hash, stem));
 }
 
@@ -50,7 +110,7 @@ bool DandelionInventory::CheckInventory(const uint256& hash) const
 // Load the dandelion record if it's in the inventory; return false if it's not
 bool DandelionInventory::GetStemFromInventory(const uint256& hash, Stem& stem) const
 {
-    LOCK(dandelion.cs);
+    LOCK(dandelion.stems);
     auto it = mapStemInventory.find(hash);
     if (it == mapStemInventory.end()) {
         return false;
@@ -115,7 +175,6 @@ bool DandelionInventory::IsAssignedToNode(const uint256& hash, const int64_t nNo
         return false;
 
     if (stem.nState != STEM_STATE_ASSIGNED) {
-        LogPrintf("%s: Dandelion TX not assigned: %s\n", __func__, hash.GetHex());
         return false;
     }
 
@@ -144,12 +203,11 @@ bool DandelionInventory::SetNodeNotified(const uint256& hash, const int64_t nNod
 
     // We might be called when trying to send to the wrong node; just tell 'em no
     if (mapStemInventory[hash].nNodeIDTo != nNodeID) {
-        LogPrintf("(debug) %s: Not ours %d != %d: %s\n", __func__, mapStemInventory[hash].nNodeIDTo, nNodeID, hash.GetHex());
         return false;
     }
 
-    LogPrintf("(debug) %s: Marking dandelion tx peer notified: %s\n", __func__, hash.GetHex());
-    LOCK(dandelion.cs);
+    LOCK(dandelion.stems);
+    mapStemInventory.at(hash).nNotifyEnd = GetAdjustedTime() + nDefaultNotifyExpire;
     mapStemInventory.at(hash).nState = STEM_STATE_NOTIFIED;
     return true;
 }
@@ -172,8 +230,7 @@ void DandelionInventory::MarkSent(const uint256& hash)
         return;
     }
 
-    LogPrintf("(debug) %s: Marking dandelion tx sent: %s\n", __func__, hash.GetHex());
-    LOCK(dandelion.cs);
+    LOCK(dandelion.stems);
     mapStemInventory.at(hash).nState = STEM_STATE_SENT; 
 }
 
@@ -181,17 +238,16 @@ void DandelionInventory::Process(const std::vector<CNode*>& vNodes)
 {
     // Protect if there's no nodes
     if (vNodes.size() < 1) {
-       LogPrintf("%s: Called with no Dandelion nodes!\n");
        return;
     }
 
-    LOCK(dandelion.cs);
+    LOCK(dandelion.stems);
     auto mapStem = mapStemInventory;
     for (auto mi : mapStem) {
         uint256 hash = mi.first;
         Stem stem = mi.second;
 
-        // Todo; if expired, we need to bloom it
+        // Todo; if expired, we need to fluff it
         if (stem.nTimeStemEnd < GetAdjustedTime()) {
             mapStemInventory.erase(hash);
             LogPrintf("(debug) %s: Erasing expired dandelion tx\n", __func__);
@@ -201,40 +257,38 @@ void DandelionInventory::Process(const std::vector<CNode*>& vNodes)
         if (((stem.nState == STEM_STATE_NOTIFIED) || (stem.nState == STEM_STATE_ASSIGNED)) &&
                                                     (stem.nNotifyEnd <= GetAdjustedTime())) {
             LogPrintf("(debug) %s: Stem expired %d<=%d: %s\n", __func__, stem.nNotifyEnd, GetAdjustedTime(), hash.GetHex());
-            // If it's been too long, reassign it
             stem.nNotifyEnd = 0;
             stem.nState = STEM_STATE_NEW;
+            DandelionRoute route;
+            SelectPeerRoutes(stem.nNodeIDFrom, route); // select new routes
         }
 
         // Already in the system
         if (stem.nState != STEM_STATE_NEW)
             continue;
 
-        // Set the index to send to
-        int64_t nNodeID = -1;
-        CNode* pNode;
-        if ((vNodes.size() == 1) && (vNodes[0]->GetId() == stem.nNodeIDFrom)) {
-            // Houston, we have a problem.
-            LogPrintf("(debug) %s: Only node is where we got the transaction from\n", __func__);
-            // let it try again later if another node comes online
+        int64_t nPeerNodeID = GetPeerNode(stem.nNodeIDFrom);
+        static bool peerFailureReported = false;
+        if (nPeerNodeID == -1) {
+            if (!peerFailureReported) {
+                // Report that we're waiting for more peers
+                LogPrintf("Notice: Not enough dandelion peers.  Waiting for more\n", __func__);
+            }
+            peerFailureReported = true;
+            // let it try again later
             continue;
         }
-        do {
-            int nRand = GetRandInt(static_cast<int>(vNodes.size() - 1));
-            pNode = vNodes[nRand];
-            nNodeID = pNode->GetId();
-            LogPrintf("(debug) %s: Selecting nNodeID %d (rand %d)\n", __func__, nNodeID, nRand);
-        } while (nNodeID == stem.nNodeIDFrom);
-        // Note:  We could also make sure we're not sending it to the same node we aborted
-        // a previous assignment from; but for now we'll try just retrying.
+        peerFailureReported = false;
 
-        LogPrintf("(debug) %s: Marking dandelion tx assigned to %d: %s\n", __func__, nNodeID, hash.GetHex());
-        LOCK(dandelion.cs);
-        mapStemInventory.at(hash).nNodeIDTo = nNodeID;
-        // Note: If nNotifyEnd is after the expire time, doesn't matter, we'll bloom.
+        LogPrintf("(debug) %s: Routing dandelion tx from %d to %d: %s\n",
+                   __func__, stem.nNodeIDFrom, nPeerNodeID, hash.GetHex());
+        LOCK(dandelion.stems);
+        mapStemInventory.at(hash).nNodeIDTo = nPeerNodeID;
+        // Note: If nNotifyEnd is after the expire time, doesn't matter, we'll fluff.
         mapStemInventory.at(hash).nNotifyEnd = GetAdjustedTime() + nDefaultNotifyExpire;
         mapStemInventory.at(hash).nState = STEM_STATE_ASSIGNED; 
 
-        pNode->fSendMempool = true;	// Juice the peer to get the mempool.
+	// Juice the peer to get the mempool.
+        g_connman->SetSendMempool(nPeerNodeID);
     }
 }

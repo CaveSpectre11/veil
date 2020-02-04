@@ -448,8 +448,7 @@ void SendCoinsDialog::PrepareTransactionFinished()
         coinControlUpdateLabels();
         uint256 hashCurrentTx = m_prepareData->tx->getWtx()->get().GetHash();
         if (fDandelion) {
-            LOCK(dandelion.cs);
-            dandelion.Add(hashCurrentTx, GetAdjustedTime() + dandelion.nDefaultStemTime, dandelion.nDefaultNodeID);
+            dandelion.AddNew(hashCurrentTx);
         }
         Q_EMIT coinsSent(hashCurrentTx);
     }

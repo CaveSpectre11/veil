@@ -26,16 +26,38 @@ struct Stem
     int16_t nState;
 };
 
+struct DandelionRoute 
+{
+    int64_t expireTime;
+    std::vector<int64_t> vRoutes;
+};
+
+
 class DandelionInventory
 {
 private:
+    // routing constants
+    const int64_t nDefaultRouteTime    = 480; // Time to persist peer routing table
+    const int64_t nRouteTimeRandomizer = 240; // Randomizer to prevent constant routing
+    const int16_t nPeerRouteCount      = 2;   // number of out peers for each in peer
+    const int64_t nDefaultNotifyExpire = 5;   // Time to expire a notify and retry
+    const int64_t nDefaultNodeID       = -1;  // Indicates the tx came from the current node
+
+    // transaction constants
+    const int64_t nDefaultStemTime     = 60;  // 60 seconds
+    const int64_t nStemTimeRandomizer  = 120; // nDefaultStemTime + 0..120 seconds
+
     std::map<uint256, Stem> mapStemInventory;
+    std::map<int64_t, DandelionRoute> mapDandelionRoutes;
+
+    // peer routing
+    bool SelectPeerRoutes(int64_t nNodeID, DandelionRoute& route);
+    bool GetRoute(const int64_t nNodeID, DandelionRoute& route);
+    int64_t GetPeerNode(const int64_t nNodeID);
+
+    CCriticalSection routes;
 public:
-    const int64_t nDefaultStemTime    = 60;  // 60 seconds
-    const int64_t nStemTimeRandomizer = 120; // nDefaultStemTime + 0..120 seconds
     const int64_t nStemTimeDecay      = 10;  // 10 seconds of decay per hop; hops 6-18
-    const int64_t nDefaultNotifyExpire = 5;  // Time to expire a notify and retry
-    const int64_t nDefaultNodeID      = -1;  // Indicates the tx came from the current node
 
     bool AddNew(const uint256& hash);
     void Add(const uint256& hash, const int64_t& nTimeStemEnd, const int64_t& nNodeIDFrom);
@@ -54,6 +76,6 @@ public:
     void MarkSent(const uint256& hash);
     void Process(const std::vector<CNode*>& vNodes);
 
-    CCriticalSection cs;
+    CCriticalSection stems;
 };
 #endif //VEIL_DANDELIONINVENTORY_H

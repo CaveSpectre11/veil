@@ -457,7 +457,7 @@ static std::string EntryDescriptionString()
            "        \"state\" :           (string) \"stem\" state or \"bloom\" state\n"
            "        \"stemstate\" :       (string) Current stem state (\"new\", \"assigned\", \"notified\", \"sent\")\n"
            "        \"stemexpire\" :      (numeric) epoch time when stem will expire (or expired)\n"
-           "        \"timetobloom\" :     (numeric) Time (in seconds) to bloom, or -1 if already in bloom state\n"
+           "        \"timetofluff\" :     (numeric) Time (in seconds) to fluff, or -1 if already in fluff state\n"
            "        \"nodefrom\" :        (numeric) peer node transaction received from\n"
            "        \"nodeto\" :          (numeric) peer node transaction sent to\n"
            "    }\n"
@@ -486,9 +486,9 @@ static void entryToJSON(UniValue &info, const CTxMemPoolEntry &e) EXCLUSIVE_LOCK
     if (dandelion.GetStemFromInventory(tx.GetHash(), DandelionRecord)) {
         UniValue dlion(UniValue::VOBJ);
         std::string stemstate;
-        int64_t ttb=DandelionRecord.nTimeStemEnd - GetAdjustedTime();
-        if (ttb < 0) ttb = -1;
-        dlion.pushKV("state", (ttb > 0 ? "stem" : "bloom"));
+        int64_t ttf=DandelionRecord.nTimeStemEnd - GetAdjustedTime();
+        if (ttf < 0) ttf = -1;
+        dlion.pushKV("state", (ttf > 0 ? "stem" : "fluff"));
         switch (DandelionRecord.nState) {
           case STEM_STATE_NEW:
             stemstate = "new";
@@ -507,7 +507,7 @@ static void entryToJSON(UniValue &info, const CTxMemPoolEntry &e) EXCLUSIVE_LOCK
         }
         dlion.pushKV("stemstate", stemstate);
         dlion.pushKV("stemexpire", DandelionRecord.nTimeStemEnd);
-        dlion.pushKV("timetobloom", ttb);
+        dlion.pushKV("timetofluff", ttf);
         dlion.pushKV("nodefrom", DandelionRecord.nNodeIDFrom);
         dlion.pushKV("nodeto", DandelionRecord.nNodeIDTo);
         info.pushKV("dandelion", dlion);
