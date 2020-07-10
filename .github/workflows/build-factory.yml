@@ -57,9 +57,13 @@ jobs:
     - name: Build Dependencies
       run: make -C depends -j$(nproc)
       working-directory: ${{ env.SOURCE_ARTIFACT }}
+    - name: Setup Configuration
+      run: |
+        ./autogen.sh
+        ./configure --disable-jni --enable-tests --with-comparison-tool=no --prefix=$(realpath depends/x86_64-pc-linux-gnu)
+      working-directory: ${{ env.SOURCE_ARTIFACT }}
     - name: Build Veil
       run: |
-        ./configure --disable-jni --enable-tests --with-comparison-tool=no --prefix=$(realpath depends/x86_64-pc-linux-gnu)
         make -j$(nproc)
       working-directory: ${{ env.SOURCE_ARTIFACT }}
     - name: Prepare Files for Artifact
@@ -99,9 +103,13 @@ jobs:
     - name: Build Dependencies
       run: make -C depends -j$(nproc) HOST=x86_64-w64-mingw32
       working-directory: ${{ env.SOURCE_ARTIFACT }}
+    - name: Setup Configuration
+      run: |
+        ./autogen.sh
+        ./configure --disable-jni --prefix=$(realpath depends/x86_64-w64-mingw32)
+      working-directory: ${{ env.SOURCE_ARTIFACT }}
     - name: Build Veil
       run: |
-        ./configure --disable-jni --prefix=$(realpath depends/x86_64-w64-mingw32)
         make -j$(nproc)
       working-directory: ${{ env.SOURCE_ARTIFACT }}
     - name: Prepare Files for Artifact
@@ -142,9 +150,13 @@ jobs:
     - name: Build Dependencies
       run: make -C depends HOST=x86_64-apple-darwin14 -j$(nproc)
       working-directory: ${{ env.SOURCE_ARTIFACT }}
+    - name: Setup Configuration
+      run: |
+        ./autogen.sh
+        ./configure --disable-jni --prefix=$(realpath depends/x86_64-apple-darwin14)
+      working-directory: ${{ env.SOURCE_ARTIFACT }}
     - name: Build Veil
       run: |
-        ./configure --disable-jni --prefix=$(realpath depends/x86_64-apple-darwin14)
         make -j$(nproc)
       working-directory: ${{ env.SOURCE_ARTIFACT }}
     - name: Prepare Files for Artifact
