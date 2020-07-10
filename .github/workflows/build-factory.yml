@@ -14,7 +14,7 @@ jobs:
     - name: Install Required Packages
       run: |
         sudo apt-get update
-        sudo apt-get install -y libboost-all-dev libdb-dev libdb++-dev libevent-dev build-essential doxygen
+        sudo apt-get install -y libboost-all-dev libdb-dev libdb++-dev libevent-dev
     - name: Create Distribution Tarball
       run: |
         ./autogen.sh
@@ -52,7 +52,7 @@ jobs:
     - name: Install Required Packages
       run: |
         sudo apt-get update
-        sudo apt-get install -y g++-mingw-w64-x86-64 gcc-mingw-w64-x86-64
+        sudo apt-get install -y g++-mingw-w64-x86-64 gcc-mingw-w64-x86-64 build-essential doxygen
     - name: Switch MinGW GCC and G++ to POSIX Threading
       run: |
         sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
@@ -99,7 +99,7 @@ jobs:
     - name: Install Required Packages
       run: |
         sudo apt-get update
-        sudo apt-get install -y python3-zmq
+        sudo apt-get install -y python3-zmq build-essential doxygen
     - name: Build Dependencies
       run: make -C depends -j$(nproc)
       working-directory: ${{ env.SOURCE_ARTIFACT }}
@@ -139,7 +139,7 @@ jobs:
         tar -xzf veil-*.tar.gz --strip-components=1
       working-directory: ${{ env.SOURCE_ARTIFACT }}
     - name: Install Required Packages
-      run: sudo apt install python3-setuptools libcap-dev zlib1g-dev libbz2-dev build-essential make cmake curl
+      run: sudo apt install python3-setuptools libcap-dev zlib1g-dev libbz2-dev build-essential make cmake curl doxygen
     - name: Get macOS SDK
       run: |
         mkdir -p depends/sdk-sources
@@ -188,7 +188,7 @@ jobs:
     - name: Install Required Packages
       run: |
         sudo apt-get update
-        sudo apt-get install -y python3-zmq
+        sudo apt-get install -y python3-zmq build-essential doxygen
     - name: Build Dependencies
       run: make -C depends -j$(nproc) HOST=aarch64-linux-gnu
       working-directory: ${{ env.SOURCE_ARTIFACT }}
