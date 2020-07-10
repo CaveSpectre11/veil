@@ -188,7 +188,7 @@ jobs:
     - name: Install Required Packages
       run: |
         sudo apt-get update
-        sudo apt-get install -y python3-zmq build-essential doxygen
+        sudo apt-get install -y python3-zmq build-essential doxygen g++-aarch64-linux-gnu
     - name: Build Dependencies
       run: make -C depends -j$(nproc) HOST=aarch64-linux-gnu
       working-directory: ${{ env.SOURCE_ARTIFACT }}
