@@ -53,6 +53,9 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y python3-zmq build-essential doxygen g++-aarch64-linux-gnu
+    - name: Build Dependencies
+      run: make -C depends -j$(nproc) HOST=aarch64-linux-gnu
+      working-directory: ${{ env.SOURCE_ARTIFACT }}
     - name: Setup Configuration
       run: |
         ./autogen.sh
@@ -65,8 +68,8 @@ jobs:
     - name: Prepare Files for Artifact
       run: |
         mkdir -p $ARTIFACT_DIR
-        strip $SOURCE_ARTIFACT/src/{veil-cli,veil-tx,veild,qt/veil-qt}
-        mv $SOURCE_ARTIFACT/src/{veil-cli,veil-tx,veild,qt/veil-qt} $ARTIFACT_DIR
+#        strip $SOURCE_ARTIFACT/src/{veil-cli,veil-tx,veild,qt/veil-qt}
+#        mv $SOURCE_ARTIFACT/src/{veil-cli,veil-tx,veild,qt/veil-qt} $ARTIFACT_DIR
     - name: Upload Artifact
       uses: actions/upload-artifact@v1
       with:
