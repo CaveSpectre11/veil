@@ -63,7 +63,7 @@ jobs:
     - name: Setup Configuration
       run: |
         ./autogen.sh
-        ./configure --disable-jni --prefix=$(realpath depends/x86_64-w64-mingw32)
+        ./configure --disable-jni --with-gui=yes --prefix=$(realpath depends/x86_64-w64-mingw32)
       working-directory: ${{ env.SOURCE_ARTIFACT }}
     - name: Build Veil
       run: |
@@ -106,7 +106,7 @@ jobs:
     - name: Setup Configuration
       run: |
         ./autogen.sh
-        ./configure --disable-jni --enable-tests --with-comparison-tool=no --prefix=$(realpath depends/x86_64-pc-linux-gnu)
+        ./configure --disable-jni --enable-tests --with-gui=yes --with-comparison-tool=no --prefix=$(realpath depends/x86_64-pc-linux-gnu)
       working-directory: ${{ env.SOURCE_ARTIFACT }}
     - name: Build Veil
       run: |
@@ -153,7 +153,7 @@ jobs:
     - name: Setup Configuration
       run: |
         ./autogen.sh
-        ./configure --disable-jni --prefix=$(realpath depends/x86_64-apple-darwin14)
+        ./configure --disable-jni --with-gui=yes --prefix=$(realpath depends/x86_64-apple-darwin14)
       working-directory: ${{ env.SOURCE_ARTIFACT }}
     - name: Build Veil
       run: |
@@ -195,7 +195,7 @@ jobs:
     - name: Setup Configuration
       run: |
         ./autogen.sh
-        ./configure --disable-jni --with-comparison-tool=no --prefix=$(realpath depends/aarch64-linux-gnu)
+        ./configure --disable-jni --with-comparison-tool=no --with-gui=yes --prefix=$(realpath depends/aarch64-linux-gnu)
       working-directory: ${{ env.SOURCE_ARTIFACT }}
     - name: Build Veil
       run: |
