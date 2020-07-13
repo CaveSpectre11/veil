@@ -65,6 +65,7 @@ jobs:
       working-directory: ${{ env.SOURCE_ARTIFACT }}
     - name: Build Veil
       run: |
+        ls doc/man
         make -C doc/man -j$(nproc)
       working-directory: ${{ env.SOURCE_ARTIFACT }}
     - name: Prepare Files for Artifact
