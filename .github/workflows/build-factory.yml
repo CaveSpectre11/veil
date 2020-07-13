@@ -13,11 +13,13 @@ jobs:
       uses: actions/checkout@v2
     - name: Install Required Packages
       run: |
+        ls doc/man
         sudo apt list --installed
         sudo apt-get update
         sudo apt-get install -y libboost-all-dev libdb-dev libdb++-dev libevent-dev
     - name: Create Distribution Tarball
       run: |
+        ls doc/man
         ./autogen.sh
         ./configure --with-incompatible-bdb
         make dist
@@ -47,8 +49,11 @@ jobs:
         name: ${{ env.SOURCE_ARTIFACT }}
     - name: Extract Archives
       run: |
+        ls doc/man
         tar -xzf depends.tar.gz
+        ls doc/man
         tar -xzf veil-*.tar.gz --strip-components=1
+        ls doc/man
       working-directory: ${{ env.SOURCE_ARTIFACT }}
     - name: Install Required Packages
       run: |
