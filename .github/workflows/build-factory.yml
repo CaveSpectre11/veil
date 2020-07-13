@@ -21,7 +21,7 @@ jobs:
       run: |
         ls doc/man
         ./autogen.sh
-        ./configure --with-incompatible-bdb
+        ./configure --with-incompatible-bdb --with-gui=qt5
         make dist
     - name: Download Dependencies
       run: make -C depends download
