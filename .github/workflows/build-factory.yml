@@ -49,9 +49,7 @@ jobs:
         name: ${{ env.SOURCE_ARTIFACT }}
     - name: Extract Archives
       run: |
-        ls doc/man
         tar -xzf depends.tar.gz
-        ls doc/man
         tar -xzf veil-*.tar.gz --strip-components=1
         ls doc/man
       working-directory: ${{ env.SOURCE_ARTIFACT }}
