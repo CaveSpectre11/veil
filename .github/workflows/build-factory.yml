@@ -23,6 +23,7 @@ jobs:
         ./autogen.sh
         ./configure --with-incompatible-bdb --with-gui=qt5
         make dist
+        ls doc/man
     - name: Download Dependencies
       run: make -C depends download
     - name: Create Dependencies Tarball
