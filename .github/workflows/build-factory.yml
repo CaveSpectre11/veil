@@ -24,11 +24,11 @@ jobs:
         ./autogen.sh
         ./configure --with-incompatible-bdb
         make dist
-        ls randomx/asm/program_prologue_linux.inc
+        ls src/randomx/asm/program_prologue_linux.inc
     - name: Download Dependencies
       run: |
         make -C depends download
-        ls randomx/asm/program_prologue_linux.inc
+        ls src/randomx/asm/program_prologue_linux.inc
     - name: Create Dependencies Tarball
       run: tar -czf depends.tar.gz depends
     - name: Prepare Files for Artifact
@@ -56,7 +56,7 @@ jobs:
       run: |
         tar -xzf depends.tar.gz
         tar -xzf veil-*.tar.gz --strip-components=1
-        ls randomx/asm/program_prologue_linux.inc
+        ls src/randomx/asm/program_prologue_linux.inc
       working-directory: ${{ env.SOURCE_ARTIFACT }}
     - name: Install Required Packages
       run: |
