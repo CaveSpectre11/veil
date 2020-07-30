@@ -56,7 +56,9 @@ jobs:
       run: |
         tar -xzf depends.tar.gz
         tar -xzf veil-*.tar.gz --strip-components=1
-        ls src/crypto/randomx/asm/program_prologue_linux.inc
+        ls src/crypto
+        ls src/crypto/randomx
+        ls src/crypto/randomx/asm
       working-directory: ${{ env.SOURCE_ARTIFACT }}
     - name: Install Required Packages
       run: |
