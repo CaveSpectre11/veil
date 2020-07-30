@@ -24,10 +24,10 @@ jobs:
         ./autogen.sh
         ./configure --with-incompatible-bdb
         make dist
-#        ls src/randomx/asm/program_prologue_linux.inc
         ls 
         ls src/
         ls src/randomx
+        ls src/randomx/asm/program_prologue_linux.inc
     - name: Download Dependencies
       run: |
         make -C depends download
