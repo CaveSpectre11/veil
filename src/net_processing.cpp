@@ -1577,7 +1577,10 @@ void ProcessStaging()
             continue;
         }
 
-        fProcessNext = mapBlockIndex.at(pblockStaged->hashPrevBlock)->nChainTx > 0;
+        {
+            LOCK(cs_main);
+            fProcessNext = mapBlockIndex.at(pblockStaged->hashPrevBlock)->nChainTx > 0;
+        }
 
         if (!fProcessNext) {
             MilliSleep(100);

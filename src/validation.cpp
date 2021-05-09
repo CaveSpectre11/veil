@@ -3607,6 +3607,7 @@ void PruneStaleBlockIndexes()
     // This isn't going to change while we're processing, so just leave and try again later.
     if (!pindexBestHeader) return;
 
+    LOCK(cs_main);
     // If mapBlockIndex isn't bloated, don't bother taking the time.
     if (chainActive.Height() > static_cast<int>(mapBlockIndex.size() - PRUNE_COUNT)) {
         return;
@@ -5051,7 +5052,7 @@ uint64_t CalculateCurrentUsage()
 /* Prune a block file (modify associated database entries)*/
 void PruneOneBlockFile(const int fileNumber)
 {
-    LOCK(cs_LastBlockFile);
+    LOCK2(cs_main, cs_LastBlockFile);
 
     for (const auto& entry : mapBlockIndex) {
         CBlockIndex* pindex = entry.second;

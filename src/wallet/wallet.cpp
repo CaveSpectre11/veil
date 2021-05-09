@@ -6488,9 +6488,12 @@ bool CWallet::CreateZerocoinSpendTransaction(CAmount nValue, int nSecurityLevel,
         if (!GetTransaction(mint.GetTxHash(), txMint, Params().GetConsensus(), hashBlock)) {
             receipt.SetStatus("Unable to find transaction containing mint", nStatus);
             fArchive = true;
-        } else if (!mapBlockIndex.count(hashBlock) || !chainActive.Contains(mapBlockIndex.at(hashBlock))) {
-            receipt.SetStatus("Mint did not make it into blockchain", nStatus);
-            fArchive = true;
+        } else {
+            LOCK(cs_main);
+            if (!mapBlockIndex.count(hashBlock) || !chainActive.Contains(mapBlockIndex.at(hashBlock))) {
+                receipt.SetStatus("Mint did not make it into blockchain", nStatus);
+                fArchive = true;
+            }
         }
 
         // archive this mint as an orphan
